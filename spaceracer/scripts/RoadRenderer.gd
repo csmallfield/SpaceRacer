@@ -95,6 +95,14 @@ func create_track() -> void:
 	track_length = z_pos
 	print("Track created with ", segments.size(), " segments, length: ", track_length)
 
+func get_curve_offset_at_segment(segment_index: int) -> float:
+	var offset: float = 0.0
+	var delta: float = 0.0
+	for i in range(segment_index):
+		delta += segments[i].curve
+		offset += delta
+	return offset
+
 func _draw():
 	if not player:
 		return
@@ -115,10 +123,10 @@ func _draw():
 	# Calculate projection for visible segments
 	var base_percent: float = fmod(player.position, SEGMENT_LENGTH) / SEGMENT_LENGTH
 	
-	var max_y: float = screen_height  # Track highest drawn Y (for clipping)
-	var curve_offset: float = 0.0  # Accumulated curve offset
-	var curve_delta: float = 0.0  # Rate of curve change
-	
+	var base_curve_offset: float = get_curve_offset_at_segment(base_index)
+	var max_y: float = screen_height
+	var curve_offset: float = base_curve_offset
+	var curve_delta: float = base_curve_offset  # This tracks accumulated curve rate
 	# Draw segments from far to near
 	var draw_start: int = base_index
 	var draw_end: int = base_index + int(DRAW_DISTANCE)
