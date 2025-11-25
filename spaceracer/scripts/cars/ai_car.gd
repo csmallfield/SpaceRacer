@@ -151,34 +151,34 @@ func _update_screen_position() -> void:
 	elif relative_z > track.track_length / 2:
 		relative_z -= track.track_length
 	
-	# Only visible if in front of camera
-	if relative_z <= road_renderer.camera_depth or relative_z > road_renderer.draw_distance * 200.0:
+	# Convert to segment units (same as road renderer)
+	var z_segments = relative_z / road_renderer.SEGMENT_LENGTH
+	
+	# Only visible if in front of camera and within draw distance
+	if z_segments < 0.5 or z_segments > road_renderer.draw_distance:
 		is_visible = false
 		return
 	
 	is_visible = true
 	
-	# Project to screen
-	screen_scale = road_renderer.camera_depth / relative_z
-	screen_y = road_renderer.HORIZON_Y + (road_renderer.camera_height * screen_scale)
+	# Project to screen using same formula as road renderer
+	screen_scale = 1.0 / z_segments
+	screen_y = road_renderer.HORIZON_Y + (road_renderer.ROAD_SCALE * screen_scale)
 	
 	# Calculate X position relative to road
 	var relative_x = world_x - camera_x
-	screen_x = (960.0 / 2.0) + (relative_x * screen_scale)
-	
-	# Apply road curve offset (simplified)
-	# In a full implementation, we'd trace through the projected segments
+	screen_x = (960.0 / 2.0) + (relative_x * screen_scale * 0.3)
 
 func _draw() -> void:
 	if not is_visible:
 		return
 	
 	# Scale car based on distance
-	var scaled_width = car_width * screen_scale * 10.0
-	var scaled_height = car_height * screen_scale * 10.0
+	var scaled_width = car_width * screen_scale * 5.0
+	var scaled_height = car_height * screen_scale * 5.0
 	
 	# Don't draw if too small or too large
-	if scaled_width < 5 or scaled_width > 200:
+	if scaled_width < 5 or scaled_width > 300:
 		return
 	
 	# Draw shadow

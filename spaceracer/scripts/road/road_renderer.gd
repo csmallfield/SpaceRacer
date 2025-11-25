@@ -10,10 +10,13 @@ const ROAD_Y: int = 540  # Bottom of screen where road starts
 const HORIZON_Y: int = 220  # Where the road meets the horizon
 
 # Camera/projection settings
-var camera_height: float = 1000.0  # Height above road
-var camera_depth: float = 0.84  # Camera depth (affects FOV)
-var draw_distance: int = 300  # Number of segments to draw
-var fog_density: float = 5.0  # Exponential fog factor
+# ROAD_SCALE controls how far down the screen the road extends
+# At z=1 segment, the road will be at HORIZON_Y + ROAD_SCALE
+const ROAD_SCALE: float = 320.0  # Pixels from horizon to screen bottom
+var camera_depth: float = 1.0    # Used by AI cars for visibility checks
+var camera_height: float = 320.0 # Used by AI cars for projection
+var draw_distance: int = 150     # Number of segments to draw
+var fog_density: float = 15.0    # Fog factor (higher = less fog)
 
 # Road segment settings
 const SEGMENT_LENGTH: float = 200.0  # Length of each segment in world units
@@ -93,55 +96,46 @@ func _project_segments() -> void:
 	projected_segments.clear()
 	sprite_render_queue.clear()
 	
+	if track.segments.size() == 0:
+		return
+	
 	var base_segment_index = int(camera_z / SEGMENT_LENGTH) % track.segments.size()
 	var segment_percent = fmod(camera_z, SEGMENT_LENGTH) / SEGMENT_LENGTH
 	
-	var max_y = ROAD_Y
-	
-	# Curve accumulation variables (from Lou's tutorial)
-	var x = 0.0      # Current X offset
+	# Curve accumulation variables
+	var x = 0.0      # Current X offset (pixels)
 	var dx = 0.0     # Curve velocity
 	
-	# Hill accumulation
-	var y_offset = 0.0
-	var dy = 0.0     # Hill velocity
-	
-	# Initialize dx based on segment percent to keep curve consistent during scrolling
-	# This is Jake's fix from codeincomplete.com
+	# Get the base segment for initial dx offset (smooth curve scrolling)
 	var base_segment = track.segments[base_segment_index]
-	dx = -segment_percent * base_segment.curve * SEGMENT_LENGTH * 0.001
-	dy = -segment_percent * base_segment.hill * SEGMENT_LENGTH * 0.0005
+	dx = -segment_percent * base_segment.curve * 50.0
 	
+	# Project each segment
 	for i in range(draw_distance):
 		var segment_index = (base_segment_index + i) % track.segments.size()
 		var segment = track.segments[segment_index]
 		
-		# Calculate Z distance from camera
-		var z_distance = (i * SEGMENT_LENGTH) - fmod(camera_z, SEGMENT_LENGTH) + SEGMENT_LENGTH
+		# Z distance in segment units (starts at small positive value)
+		var z = float(i) + 1.0 - segment_percent
 		
-		if z_distance <= camera_depth:
-			continue
+		# Perspective scale: 1/z relationship
+		var scale = 1.0 / z
 		
-		# Project to screen using perspective formula
-		var scale = camera_depth / z_distance
+		# Y position: closer segments are lower on screen
+		var projected_y = HORIZON_Y + (ROAD_SCALE * scale)
 		
-		# Base Y position (flat road)
-		var projected_y = HORIZON_Y + (camera_height * scale) + y_offset
+		# Skip if past bottom of screen
+		if projected_y > SCREEN_HEIGHT:
+			break  # All following segments will also be off-screen
 		
-		# Road width at this depth
-		var projected_width = track.road_width * scale
+		# Road width in pixels at this distance
+		var projected_width = (track.road_width * scale) * 0.3
 		
-		# X position with camera offset and curve accumulation
-		var projected_x = (SCREEN_WIDTH / 2.0) - (camera_x * scale) + x
+		# X position with steering and curve offset
+		var projected_x = (SCREEN_WIDTH / 2.0) - (camera_x * scale * 0.3) + x
 		
-		# Skip if below horizon from hills
-		if projected_y >= max_y:
-			# Still accumulate curve/hill even for clipped segments
-			dx += segment.curve * SEGMENT_LENGTH * 0.001
-			x += dx
-			dy += segment.hill * SEGMENT_LENGTH * 0.0005
-			y_offset += dy * scale * 100.0
-			continue
+		# Apply hill offset to Y
+		projected_y -= segment.hill * scale * 50.0
 		
 		# Store projected data
 		var proj_data = {
@@ -151,24 +145,15 @@ func _project_segments() -> void:
 			"x": projected_x,
 			"width": projected_width,
 			"scale": scale,
-			"z": z_distance,
-			"clip_y": max_y
+			"z": z
 		}
 		projected_segments.append(proj_data)
 		
-		# Update max_y for clipping (hills create horizons)
-		if projected_y < max_y:
-			max_y = projected_y
+		# Accumulate curve for next iteration
+		dx += segment.curve * 50.0
+		x += dx * scale
 		
-		# Accumulate curve for next segment
-		dx += segment.curve * SEGMENT_LENGTH * 0.001
-		x += dx
-		
-		# Accumulate hill
-		dy += segment.hill * SEGMENT_LENGTH * 0.0005
-		y_offset += dy * scale * 100.0
-		
-		# Queue roadside sprites for this segment
+		# Queue roadside sprites
 		_queue_segment_sprites(segment, proj_data)
 
 func _queue_segment_sprites(segment: TrackSegment, proj_data: Dictionary) -> void:
@@ -181,15 +166,31 @@ func _queue_segment_sprites(segment: TrackSegment, proj_data: Dictionary) -> voi
 			"x": sprite_x,
 			"y": proj_data.y,
 			"scale": sprite_scale,
-			"z": proj_data.z,
-			"clip_y": proj_data.clip_y
+			"z": proj_data.z
 		})
 
 func _draw_road() -> void:
+	if projected_segments.size() < 2:
+		return
+	
 	# Draw from back to front (painter's algorithm)
 	for i in range(projected_segments.size() - 1, 0, -1):
 		var p1 = projected_segments[i]      # Far segment
 		var p2 = projected_segments[i - 1]  # Near segment
+		
+		var y1 = p1.y  # Far (higher on screen, smaller Y)
+		var y2 = p2.y  # Near (lower on screen, larger Y)
+		
+		# Skip if segment has no height (degenerate)
+		if y2 - y1 < 1.0:
+			continue
+		
+		# Skip if entirely off screen
+		if y1 > SCREEN_HEIGHT or y2 < 0:
+			continue
+		
+		# Clamp to screen bounds
+		y2 = min(y2, SCREEN_HEIGHT)
 		
 		# Determine colors based on segment index (for rumble strips)
 		var rumble_index = int(p1.index / RUMBLE_LENGTH) % 2
@@ -203,58 +204,68 @@ func _draw_road() -> void:
 		rumble_color = rumble_color.lerp(track.horizon_color, fog_factor)
 		road_color = road_color.lerp(track.horizon_color, fog_factor)
 		
-		# Calculate segment boundaries
-		var y1 = p1.y
-		var y2 = p2.y
+		# Calculate road widths at each segment
+		var road_w1 = p1.width * 0.5
+		var road_w2 = p2.width * 0.5
+		var rumble_w1 = p1.width * 0.55
+		var rumble_w2 = p2.width * 0.55
 		
-		# Skip if segment is behind us or fully clipped
-		if y1 >= y2:
-			continue
-		if y2 > ROAD_Y:
-			y2 = ROAD_Y
-		
-		# Draw grass (full width background)
+		# Draw grass (full width)
 		_draw_segment_polygon(
 			0, y1, SCREEN_WIDTH, y1,
 			SCREEN_WIDTH, y2, 0, y2,
 			grass_color
 		)
 		
-		# Calculate road edges
-		var road_half_width_1 = p1.width * 0.5
-		var road_half_width_2 = p2.width * 0.5
-		var rumble_width_1 = p1.width * 0.55
-		var rumble_width_2 = p2.width * 0.55
-		
 		# Draw rumble strips
 		_draw_segment_polygon(
-			p1.x - rumble_width_1, y1, p1.x + rumble_width_1, y1,
-			p2.x + rumble_width_2, y2, p2.x - rumble_width_2, y2,
+			p1.x - rumble_w1, y1, p1.x + rumble_w1, y1,
+			p2.x + rumble_w2, y2, p2.x - rumble_w2, y2,
 			rumble_color
 		)
 		
 		# Draw road surface
 		_draw_segment_polygon(
-			p1.x - road_half_width_1, y1, p1.x + road_half_width_1, y1,
-			p2.x + road_half_width_2, y2, p2.x - road_half_width_2, y2,
+			p1.x - road_w1, y1, p1.x + road_w1, y1,
+			p2.x + road_w2, y2, p2.x - road_w2, y2,
 			road_color
 		)
 		
-		# Draw lane markings
+		# Draw lane markings on alternating segments
 		if rumble_index == 0:
-			_draw_lane_markings(p1, p2)
+			_draw_lane_markings(p1, p2, y1, y2)
 
 func _draw_segment_polygon(x1: float, y1: float, x2: float, y2: float, 
 						   x3: float, y3: float, x4: float, y4: float, color: Color) -> void:
-	var points = PackedVector2Array([
+	# Validate - need at least 1 pixel height difference
+	if abs(y1 - y3) < 1.0:
+		return
+	
+	# Use draw_rect for horizontal strips (faster and no triangulation issues)
+	# This is a trapezoid, but for small segments a rect approximation works
+	var top_y = min(y1, y2)
+	var bottom_y = max(y3, y4)
+	var left_x = min(x1, x4)
+	var right_x = max(x2, x3)
+	
+	# For proper trapezoids, we need to draw triangles
+	# Top-left, top-right, bottom-right triangle
+	var tri1 = PackedVector2Array([
 		Vector2(x1, y1),
 		Vector2(x2, y2),
+		Vector2(x3, y3)
+	])
+	# Top-left, bottom-right, bottom-left triangle
+	var tri2 = PackedVector2Array([
+		Vector2(x1, y1),
 		Vector2(x3, y3),
 		Vector2(x4, y4)
 	])
-	draw_colored_polygon(points, color)
+	
+	draw_colored_polygon(tri1, color)
+	draw_colored_polygon(tri2, color)
 
-func _draw_lane_markings(p1: Dictionary, p2: Dictionary) -> void:
+func _draw_lane_markings(p1: Dictionary, p2: Dictionary, y1: float, y2: float) -> void:
 	# Center line
 	var line_width_1 = p1.width * 0.01
 	var line_width_2 = p2.width * 0.01
@@ -264,8 +275,8 @@ func _draw_lane_markings(p1: Dictionary, p2: Dictionary) -> void:
 	var line_color = track.lane_color.lerp(track.horizon_color, fog_factor)
 	
 	_draw_segment_polygon(
-		p1.x - line_width_1, p1.y, p1.x + line_width_1, p1.y,
-		p2.x + line_width_2, p2.y, p2.x - line_width_2, p2.y,
+		p1.x - line_width_1, y1, p1.x + line_width_1, y1,
+		p2.x + line_width_2, y2, p2.x - line_width_2, y2,
 		line_color
 	)
 
@@ -294,8 +305,8 @@ func _draw_sprites() -> void:
 		draw_texture_rect(tex, Rect2(draw_x, draw_y, width, height), false, modulate)
 
 func _calculate_fog(z: float) -> float:
-	# Exponential fog
-	return 1.0 - exp(-z * z / (draw_distance * SEGMENT_LENGTH * fog_density))
+	# Linear fog based on distance
+	return clamp(z / float(draw_distance), 0.0, 1.0)
 
 # Utility function to check if a world position collides with roadside objects
 func check_sprite_collision(world_x: float, world_z: float) -> bool:
@@ -316,5 +327,7 @@ func check_sprite_collision(world_x: float, world_z: float) -> bool:
 
 # Check if position is off the road
 func is_off_road(world_x: float) -> bool:
+	# world_x is in the same units as camera_x (player position)
+	# road_width is scaled by 0.01 in projection, so we need to compare consistently
 	var half_road = track.road_width * 0.5
 	return abs(world_x) > half_road
