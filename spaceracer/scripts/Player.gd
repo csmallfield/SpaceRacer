@@ -12,9 +12,9 @@ const MAX_SPEED: float = 800.0
 const ACCELERATION: float = 200.0
 const DECELERATION: float = 300.0
 const BRAKE_DECELERATION: float = 150.0
-const OFF_ROAD_DECEL: float = 00.0
-const STEERING_SPEED: float = 20.0
-const CENTRIFUGAL_FORCE: float = 0.3
+const OFF_ROAD_DECEL: float = 200.0
+const STEERING_SPEED: float = 1.0
+const CENTRIFUGAL_FORCE: float = 0.5
 
 # Camera
 const CAMERA_HEIGHT: float = 1000.0  # Camera height above road
@@ -43,12 +43,13 @@ func update(delta: float, current_segment: RoadSegment) -> void:
 		steering = 1.0
 	
 	# Apply centrifugal force from curves
-	if current_segment:
-		x -= (current_segment.curve * speed * CENTRIFUGAL_FORCE * delta)
-	
 	# Apply steering
 	x += steering * STEERING_SPEED * delta
-	
+
+# Apply centrifugal force from curves (after steering so it can be fought)
+	if current_segment:
+		var curve_push = current_segment.curve * (speed / MAX_SPEED) * CENTRIFUGAL_FORCE * delta
+		x -= curve_push
 	# Keep player on or near the road (allow going off-road but slow down)
 	if abs(x) > 1.0:
 		# Off-road - apply additional deceleration

@@ -86,6 +86,10 @@ func create_track() -> void:
 		
 		segment.y = y_pos
 		
+		# Hills - add elevation changes
+		var hill_position: float = float(i) / float(num_segments) * PI * 4.0
+		y_pos = sin(hill_position) * 500.0 + cos(hill_position * 0.5) * 200.0
+		
 		# Alternate colors for road stripes
 		segment.is_striped = (i % 4) < 2
 		
@@ -133,6 +137,12 @@ func _draw():
 	for n in range(draw_start, draw_end):
 		var i: int = n % segments.size()
 		var segment: RoadSegment = segments[i]
+		var next_segment: RoadSegment = segments[(i + 1) % segments.size()]
+
+	# Interpolate to next segment for smoother visuals
+		var lerp_amount: float = base_percent if i == base_index else 0.0
+		var interpolated_y: float = lerp(segment.y, next_segment.y, lerp_amount)
+		var interpolated_curve: float = lerp(segment.curve, next_segment.curve, lerp_amount)
 		
 		# Calculate distance from camera
 		var segment_distance: float = float(n - base_index)
@@ -145,7 +155,7 @@ func _draw():
 		# 3D to 2D projection
 		segment.scale = 300 / z 
 		var camera_y: float = player.y + base_segment.y
-		var proj_y: float = (camera_y - segment.y) * segment.scale
+		var proj_y: float = (camera_y - interpolated_y) * segment.scale
 		segment.clip = half_height + proj_y
 		
 		# Debug output for first few segments
@@ -159,7 +169,7 @@ func _draw():
 			continue
 		
 		# Calculate curve offset
-		curve_delta += segment.curve
+		curve_delta += interpolated_curve
 		curve_offset += curve_delta
 		
 		# Project road width and position
