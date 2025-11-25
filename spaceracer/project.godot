@@ -10,16 +10,23 @@ config_version=5
 
 [application]
 
-config/name="Pseudo 3D Racer"
-run/main_scene="res://scenes/Main.tscn"
+config/name="Pseudo3D Racer"
+config/description="A pseudo-3D racing game in the style of OutRun and Road Rash"
+run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.4", "Forward Plus")
 config/icon="res://icon.svg"
 
+[autoload]
+
+GameManager="*res://scripts/autoload/game_manager.gd"
+
 [display]
 
-window/size/viewport_width=640
-window/size/viewport_height=480
-window/stretch/mode="viewport"
+window/size/viewport_width=960
+window/size/viewport_height=540
+window/size/window_width_override=1920
+window/size/window_height_override=1080
+window/stretch/mode="canvas_items"
 
 [input]
 
