@@ -6,12 +6,13 @@ var position: float = 1000.0  # Position along the track (Z coordinate)
 var speed: float = 0.0  # Current speed
 var x: float = 0.0  # X position relative to road center (-1 to 1, where 0 is center)
 var y: float = 0.0  # Y position (camera height above ground)
+var camera_x: float = 0.0  # Smoothed camera position
 
 # Movement parameters
-const MAX_SPEED: float = 800.0
+const MAX_SPEED: float = 700.0
 const ACCELERATION: float = 200.0
-const DECELERATION: float = 300.0
-const BRAKE_DECELERATION: float = 150.0
+const DECELERATION: float = 100.0
+const BRAKE_DECELERATION: float = 600.0
 const OFF_ROAD_DECEL: float = 200.0
 const STEERING_SPEED: float = 1.0
 const CENTRIFUGAL_FORCE: float = 0.5
@@ -46,6 +47,7 @@ func update(delta: float, current_segment: RoadSegment) -> void:
 	# Apply steering
 	x += steering * STEERING_SPEED * delta
 
+	camera_x = lerp(camera_x, x, 3.0 * delta)
 # Apply centrifugal force from curves (after steering so it can be fought)
 	if current_segment:
 		var curve_push = current_segment.curve * (speed / MAX_SPEED) * CENTRIFUGAL_FORCE * delta

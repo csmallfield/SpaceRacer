@@ -8,8 +8,8 @@ const ROAD_WIDTH: float = 2000.0  # Width of road in world units
 const SEGMENT_LENGTH: float = 200.0  # Length of each segment
 const DRAW_DISTANCE: float = 500  # How many segments to draw
 const FOV: float = 100.0  # Field of view
-const CAMERA_HEIGHT: float = 1000.0  # Camera height above road
-const CAMERA_DEPTH: float = 1.0 / CAMERA_HEIGHT  # For projection calculations
+const CAMERA_HEIGHT: float = 500.0  # Camera height above road
+const CAMERA_DEPTH: float = 1 / CAMERA_HEIGHT  # For projection calculations
 
 # Colors
 const ROAD_COLOR_1: Color = Color(0.4, 0.4, 0.4)  # Dark asphalt
@@ -36,7 +36,7 @@ func create_track() -> void:
 	
 	var z_pos: float = 0.0
 	var y_pos: float = 0.0
-	var num_segments: int = 500  # Total segments in track
+	var num_segments: int = 1500  # Total segments in track
 	
 	# Build segments with curves and hills
 	for i in range(num_segments):
@@ -47,40 +47,36 @@ func create_track() -> void:
 		# Create varied track sections
 		var progress: float = float(i) / float(num_segments)
 		
-		# Curves - create interesting combinations
-		if progress < 0.15:  # Straight
+		# Curves - create longer sections
+		if progress < 0.3:  # Long straight
 			segment.curve = 0.0
-		elif progress < 0.25:  # Right curve
-			segment.curve = 1.5
-		elif progress < 0.35:  # Straight
+		elif progress < 0.45:  # Long right curve
+			segment.curve = 1.2
+		elif progress < 0.6:  # Long straight
 			segment.curve = 0.0
-		elif progress < 0.5:  # Long left curve
+		elif progress < 0.75:  # Long left curve
 			segment.curve = -1.2
-		elif progress < 0.6:  # Straight
-			segment.curve = 0.0
-		elif progress < 0.65:  # Sharp right
-			segment.curve = 2.5
-		elif progress < 0.75:  # S-curve (right to left)
-			if progress < 0.7:
-				segment.curve = 1.5
+		elif progress < 0.85:  # S-curve
+			if progress < 0.8:
+				segment.curve = 1.05
 			else:
-				segment.curve = -1.5
-		else:  # Straight to finish
+				segment.curve = -1.05
+		else:  # Final straight
 			segment.curve = 0.0
 		
 		# Hills - add elevation changes
 		if progress < 0.1:
-			y_pos += 10.0  # Uphill
+			y_pos += 10.0   # Uphill
 		elif progress < 0.2:
-			y_pos -= 5.0  # Slight downhill
+			y_pos -= 5.0   # Slight downhill
 		elif progress < 0.4:
 			y_pos += 0.0  # Flat
 		elif progress < 0.45:
-			y_pos += 50.0  # Big hill
+			y_pos += 50.0   # Big hill
 		elif progress < 0.55:
-			y_pos -= 30.0  # Down the hill
+			y_pos -= 30.0   # Down the hill
 		elif progress < 0.8:
-			y_pos += 2.0  # Slight uphill
+			y_pos += 2.0   # Slight uphill
 		else:
 			y_pos -= 2.0  # Back to start level
 		
@@ -174,7 +170,7 @@ func _draw():
 		
 		# Project road width and position
 		var road_width: float = ROAD_WIDTH * segment.scale
-		var x_offset: float = (curve_offset - (player.x * ROAD_WIDTH)) * segment.scale
+		var x_offset: float = (curve_offset - (player.camera_x * ROAD_WIDTH)) * segment.scale
 		
 		var x1: float = half_width + x_offset - road_width
 		var x2: float = half_width + x_offset + road_width
