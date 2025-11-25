@@ -8,12 +8,12 @@ var x: float = 0.0  # X position relative to road center (-1 to 1, where 0 is ce
 var y: float = 0.0  # Y position (camera height above ground)
 
 # Movement parameters
-const MAX_SPEED: float = 200.0
-const ACCELERATION: float = 50.0
-const DECELERATION: float = 80.0
+const MAX_SPEED: float = 800.0
+const ACCELERATION: float = 200.0
+const DECELERATION: float = 300.0
 const BRAKE_DECELERATION: float = 150.0
-const OFF_ROAD_DECEL: float = 100.0
-const STEERING_SPEED: float = 2.0
+const OFF_ROAD_DECEL: float = 00.0
+const STEERING_SPEED: float = 20.0
 const CENTRIFUGAL_FORCE: float = 0.3
 
 # Camera

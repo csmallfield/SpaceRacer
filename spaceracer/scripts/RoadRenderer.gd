@@ -123,10 +123,9 @@ func _draw():
 	# Calculate projection for visible segments
 	var base_percent: float = fmod(player.position, SEGMENT_LENGTH) / SEGMENT_LENGTH
 	
-	var base_curve_offset: float = get_curve_offset_at_segment(base_index)
 	var max_y: float = screen_height
-	var curve_offset: float = base_curve_offset
-	var curve_delta: float = base_curve_offset  # This tracks accumulated curve rate
+	var curve_offset: float = 0.0
+	var curve_delta: float = 0.0  # This tracks accumulated curve rate
 	# Draw segments from far to near
 	var draw_start: int = base_index
 	var draw_end: int = base_index + int(DRAW_DISTANCE)
@@ -155,6 +154,8 @@ func _draw():
 		
 		# Skip segments that are off-screen (above horizon)
 		if segment.clip >= max_y:
+			#if n < base_index + 5:
+				#print("Segment ", n, " clipped: clip=", segment.clip, " max_y=", max_y)
 			continue
 		
 		# Calculate curve offset
@@ -163,7 +164,7 @@ func _draw():
 		
 		# Project road width and position
 		var road_width: float = ROAD_WIDTH * segment.scale
-		var x_offset: float = (curve_offset - player.x * 1000.0) * segment.scale
+		var x_offset: float = (curve_offset - (player.x * ROAD_WIDTH)) * segment.scale
 		
 		var x1: float = half_width + x_offset - road_width
 		var x2: float = half_width + x_offset + road_width
