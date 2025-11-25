@@ -19,9 +19,18 @@ const RUMBLE_COLOR_1: Color = Color(1.0, 1.0, 1.0)  # White rumble strip
 const RUMBLE_COLOR_2: Color = Color(1.0, 0.0, 0.0)  # Red rumble strip
 const LINE_COLOR: Color = Color(1.0, 1.0, 1.0)  # Center line
 
+# Parallax colors
+const SKY_COLOR: Color = Color(0.5, 0.7, 1.0)
+const MOUNTAIN_COLOR_1: Color = Color(0.4, 0.3, 0.5)  # Distant mountains
+const MOUNTAIN_COLOR_2: Color = Color(0.5, 0.4, 0.6)  # Mid mountains
+const HILL_COLOR: Color = Color(0.2, 0.5, 0.2)  # Near hills
+
 # Road segments
 var segments: Array[RoadSegment] = []
 var track_length: float = 0.0
+
+# Traffic
+var traffic_cars: Array[TrafficCar] = []
 
 # Reference to player
 var player: Player
@@ -29,6 +38,9 @@ var player: Player
 func _ready():
 	# Create the track
 	create_track()
+	
+	# Spawn initial traffic
+	spawn_traffic()
 
 func create_track() -> void:
 	# Create a looping track with various curves and hills
@@ -89,11 +101,48 @@ func create_track() -> void:
 		# Alternate colors for road stripes
 		segment.is_striped = (i % 4) < 2
 		
+		# Add roadside sprites periodically
+		if i % 20 == 0:  # Every 20 segments
+			# Add sprites on both sides
+			var sprite_type = randi() % RoadsideSprite.SpriteType.size()
+			
+			# Left side
+			var left_sprite = RoadsideSprite.new(-1.5 - randf() * 0.5, 0.0, sprite_type)
+			segment.sprites.append(left_sprite)
+			
+			# Right side
+			var right_sprite = RoadsideSprite.new(1.5 + randf() * 0.5, 0.0, sprite_type)
+			segment.sprites.append(right_sprite)
+		
+		# Occasional single sprites
+		if i % 10 == 5:
+			var sprite_type = randi() % RoadsideSprite.SpriteType.size()
+			var side = 1 if randf() > 0.5 else -1
+			var sprite = RoadsideSprite.new(side * (1.5 + randf() * 0.5), 0.0, sprite_type)
+			segment.sprites.append(sprite)
+		
 		segments.append(segment)
 		z_pos += SEGMENT_LENGTH
 	
 	track_length = z_pos
 	print("Track created with ", segments.size(), " segments, length: ", track_length)
+
+func spawn_traffic() -> void:
+	# Spawn some traffic cars
+	traffic_cars.clear()
+	
+	# Spawn traffic cars at various positions
+	for i in range(20):
+		var z = randf() * track_length
+		var x_lane = [-0.5, 0.0, 0.5][randi() % 3]  # Three lanes
+		var speed = randf_range(200.0, 500.0)
+		var oncoming = randf() > 0.7  # 30% chance of oncoming traffic
+		
+		if oncoming:
+			speed = -speed  # Negative speed for oncoming
+		
+		var car = TrafficCar.new(z, x_lane, speed, oncoming)
+		traffic_cars.append(car)
 
 func get_curve_offset_at_segment(segment_index: int) -> float:
 	var offset: float = 0.0
@@ -102,6 +151,49 @@ func get_curve_offset_at_segment(segment_index: int) -> float:
 		delta += segments[i].curve
 		offset += delta
 	return offset
+
+func draw_parallax_background(screen_width: float, screen_height: float, heading: float) -> void:
+	# Draw sky
+	draw_rect(Rect2(0, 0, screen_width, screen_height), SKY_COLOR)
+	
+	# heading represents the compass direction the player is facing
+	# Positive heading = turned right, negative = turned left
+	# Scale to pixels: small values so 30-degree turn = ~200px shift
+	
+	# Draw distant mountains (slowest parallax)
+	var mountain_offset_1 = -heading * 1.5  # Negative so right turn shifts left
+	mountain_offset_1 = fmod(mountain_offset_1 + screen_width * 10, screen_width * 2) - screen_width
+	
+	for i in range(-1, 3):
+		var x_base = i * screen_width + mountain_offset_1
+		# Simple mountain shapes using triangles
+		var points_1 = PackedVector2Array([
+			Vector2(x_base, screen_height * 0.4),
+			Vector2(x_base + screen_width * 0.3, screen_height * 0.1),
+			Vector2(x_base + screen_width * 0.6, screen_height * 0.4)
+		])
+		draw_colored_polygon(points_1, MOUNTAIN_COLOR_1)
+	
+	# Draw mid-distance mountains (medium parallax)
+	var mountain_offset_2 = -heading * 3.0
+	mountain_offset_2 = fmod(mountain_offset_2 + screen_width * 10, screen_width * 2) - screen_width
+	
+	for i in range(-1, 3):
+		var x_base = i * screen_width + mountain_offset_2
+		var points_2 = PackedVector2Array([
+			Vector2(x_base + screen_width * 0.1, screen_height * 0.45),
+			Vector2(x_base + screen_width * 0.35, screen_height * 0.15),
+			Vector2(x_base + screen_width * 0.5, screen_height * 0.45)
+		])
+		draw_colored_polygon(points_2, MOUNTAIN_COLOR_2)
+	
+	# Draw near hills (faster parallax)
+	var hill_offset = -heading * 6.0
+	hill_offset = fmod(hill_offset + screen_width * 10, screen_width * 2) - screen_width
+	
+	for i in range(-1, 3):
+		var x_base = i * screen_width + hill_offset
+		draw_rect(Rect2(x_base, screen_height * 0.5, screen_width * 0.4, screen_height * 0.1), HILL_COLOR)
 
 func _draw():
 	if not player:
@@ -113,9 +205,6 @@ func _draw():
 	var half_width: float = screen_width / 2.0
 	var half_height: float = screen_height / 2.0
 	
-	# Clear background - draw sky
-	draw_rect(Rect2(0, 0, screen_width, screen_height), Color(0.5, 0.7, 1.0))
-	
 	# Find base segment (where player is)
 	var base_index: int = player.get_segment_index(segments, track_length)
 	var base_segment: RoadSegment = segments[base_index]
@@ -126,6 +215,23 @@ func _draw():
 	var max_y: float = screen_height
 	var curve_offset: float = 0.0
 	var curve_delta: float = 0.0  # This tracks accumulated curve rate
+	
+	# Calculate player's current heading (compass direction) for parallax
+	# Start from base_index and accumulate curve to get current facing direction
+	var player_heading: float = 0.0
+	for i in range(base_index + 1):
+		player_heading += segments[i % segments.size()].curve
+	
+	# Add partial progress through current segment
+	if base_index >= 0 and base_index < segments.size():
+		player_heading += segments[base_index].curve * base_percent
+	
+	# Draw parallax background first - heading represents compass direction
+	draw_parallax_background(screen_width, screen_height, player_heading)
+	
+	# Collect sprites to draw (for depth sorting)
+	var sprites_to_draw: Array = []
+	
 	# Draw segments from far to near
 	var draw_start: int = base_index
 	var draw_end: int = base_index + int(DRAW_DISTANCE)
@@ -135,7 +241,7 @@ func _draw():
 		var segment: RoadSegment = segments[i]
 		var next_segment: RoadSegment = segments[(i + 1) % segments.size()]
 
-	# Interpolate to next segment for smoother visuals
+		# Interpolate to next segment for smoother visuals
 		var lerp_amount: float = base_percent if i == base_index else 0.0
 		var interpolated_y: float = lerp(segment.y, next_segment.y, lerp_amount)
 		var interpolated_curve: float = lerp(segment.curve, next_segment.curve, lerp_amount)
@@ -154,14 +260,8 @@ func _draw():
 		var proj_y: float = (camera_y - interpolated_y) * segment.scale
 		segment.clip = half_height + proj_y
 		
-		# Debug output for first few segments
-		#if n < base_index + 3:
-		#	print("Segment ", n, ": z=", z, " scale=", segment.scale, " clip=", segment.clip, " road_width=", ROAD_WIDTH * segment.scale)
-		
 		# Skip segments that are off-screen (above horizon)
 		if segment.clip >= max_y:
-			#if n < base_index + 5:
-				#print("Segment ", n, " clipped: clip=", segment.clip, " max_y=", max_y)
 			continue
 		
 		# Calculate curve offset
@@ -202,13 +302,108 @@ func _draw():
 			draw_rect(Rect2(half_width + x_offset - line_width, y1, 
 							line_width * 2.0, y2 - y1), LINE_COLOR)
 		
+		# Collect roadside sprites for this segment
+		for sprite in segment.sprites:
+			var sprite_data = {
+				"sprite": sprite,
+				"segment": segment,
+				"x_offset": x_offset,
+				"z": z,
+				"scale": segment.scale
+			}
+			sprites_to_draw.append(sprite_data)
+		
 		max_y = y1
+	
+	# Draw roadside sprites (sorted by distance, far to near)
+	for sprite_data in sprites_to_draw:
+		draw_roadside_sprite(sprite_data, half_width, curve_offset)
+	
+	# Draw traffic cars
+	draw_traffic(half_width, half_height, base_index, base_percent, curve_offset)
 	
 	# Draw player car (simple rectangle for now)
 	draw_player_car(screen_width, screen_height)
 	
 	# Draw simple HUD
 	draw_hud(screen_width, screen_height)
+
+func draw_roadside_sprite(sprite_data: Dictionary, half_width: float, curve_offset: float) -> void:
+	var sprite: RoadsideSprite = sprite_data["sprite"]
+	var segment: RoadSegment = sprite_data["segment"]
+	var x_offset: float = sprite_data["x_offset"]
+	var scale: float = sprite_data["scale"]
+	
+	# Project sprite position
+	var sprite_x: float = half_width + x_offset + (sprite.x * ROAD_WIDTH * scale)
+	var sprite_y: float = segment.clip - (sprite.height * scale)
+	var sprite_width: float = sprite.width * scale
+	var sprite_height: float = sprite.height * scale
+	
+	# Only draw if on screen
+	var screen_width = get_viewport_rect().size.x
+	if sprite_x > -sprite_width and sprite_x < screen_width + sprite_width:
+		# Draw sprite as colored rectangle (placeholder)
+		draw_rect(Rect2(sprite_x - sprite_width / 2, sprite_y, sprite_width, sprite_height), sprite.color)
+		
+		# Add outline for visibility
+		draw_rect(Rect2(sprite_x - sprite_width / 2, sprite_y, sprite_width, sprite_height), 
+				  Color(0, 0, 0), false, max(1.0, scale))
+
+func draw_traffic(half_width: float, half_height: float, base_index: int, base_percent: float, curve_offset: float) -> void:
+	# Draw all traffic cars
+	for car in traffic_cars:
+		# Calculate which segment this car is on
+		var car_segment_idx = -1
+		var wrapped_pos = fmod(car.position, track_length)
+		if wrapped_pos < 0:
+			wrapped_pos += track_length
+		
+		for i in range(segments.size()):
+			if segments[i].z > wrapped_pos:
+				car_segment_idx = max(0, i - 1)
+				break
+		
+		if car_segment_idx == -1:
+			car_segment_idx = segments.size() - 1
+		
+		# Only draw if within view distance
+		var distance_from_player = car_segment_idx - base_index
+		if distance_from_player < 0:
+			distance_from_player += segments.size()
+		
+		if distance_from_player > DRAW_DISTANCE or distance_from_player < 1:
+			continue
+		
+		var car_segment: RoadSegment = segments[car_segment_idx]
+		var z: float = float(distance_from_player) * SEGMENT_LENGTH
+		
+		if z < SEGMENT_LENGTH * 0.5:
+			continue
+		
+		# Project car position
+		var scale = 300.0 / z
+		var car_width = TrafficCar.CAR_WIDTH * scale
+		var car_height = TrafficCar.CAR_HEIGHT * scale
+		
+		var car_x_offset = (curve_offset - (player.camera_x * ROAD_WIDTH)) * scale
+		var car_x = half_width + car_x_offset + (car.x * ROAD_WIDTH * scale)
+		var car_y = car_segment.clip - car_height
+		
+		# Draw car as colored rectangle (placeholder)
+		draw_rect(Rect2(car_x - car_width / 2, car_y, car_width, car_height), car.color)
+		
+		# Add windows
+		var window_color = Color(0.1, 0.1, 0.3)
+		draw_rect(Rect2(car_x - car_width / 2 + car_width * 0.1, car_y + car_height * 0.1, 
+						car_width * 0.8, car_height * 0.3), window_color)
+		
+		# Add headlights/taillights
+		var light_color = Color(1.0, 1.0, 0.0) if car.is_oncoming else Color(1.0, 0.0, 0.0)
+		var light_size = car_width * 0.15
+		var light_y = car_y + (car_height * 0.8 if car.is_oncoming else car_height * 0.05)
+		draw_rect(Rect2(car_x - car_width / 2 + car_width * 0.15, light_y, light_size, light_size * 0.5), light_color)
+		draw_rect(Rect2(car_x + car_width / 2 - car_width * 0.15 - light_size, light_y, light_size, light_size * 0.5), light_color)
 
 func draw_player_car(screen_width: float, screen_height: float) -> void:
 	# Draw a simple car sprite at bottom center
@@ -251,5 +446,9 @@ func draw_hud(screen_width: float, screen_height: float) -> void:
 	draw_rect(Rect2(20, 45, 180 * lap_percentage, 15), Color(0.0, 0.5, 1.0))
 	draw_rect(Rect2(20, 45, 180, 15), Color(1.0, 1.0, 1.0), false, 2.0)
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	# Update traffic
+	for car in traffic_cars:
+		car.update(delta, track_length)
+	
 	queue_redraw()  # Continuously redraw

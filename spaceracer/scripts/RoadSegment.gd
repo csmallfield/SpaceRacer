@@ -14,6 +14,9 @@ var scale: float = 0.0  # Scale factor for this segment (1/z adjusted)
 var color: Color = Color.WHITE
 var is_striped: bool = false  # For alternating road colors
 
+# Roadside objects
+var sprites: Array[RoadsideSprite] = []  # Objects on this segment
+
 func _init(z_pos: float = 0.0, y_pos: float = 0.0, curve_amount: float = 0.0):
 	z = z_pos
 	y = y_pos
